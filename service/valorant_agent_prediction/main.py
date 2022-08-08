@@ -12,10 +12,10 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from helpers.timeit import timing
 
-
-def get_winner(round_summary):
-    return round_summary[-1]['stats']['winningTeam']['value']
-
+n_components = 39
+n_estimators = 92
+max_features = 0.95
+max_depth = 10
 
 invalid_keys = [
     'currRank',
@@ -85,6 +85,10 @@ weapons = ['Vandal',
            'Ares',
            'Shorty',
            'Bucky']
+
+
+def get_winner(round_summary):
+    return round_summary[-1]['stats']['winningTeam']['value']
 
 
 def extract_team_rows(game_metadata, game_attributes, round_summary, player_summary):
@@ -260,13 +264,17 @@ def predict_best_lineup(model, vectorizer, map_pick, current_agent_list):
     features_df = pd.DataFrame.from_dict(features)
     features_df_interactions = create_interactions(features_df)
     features_df_interactions_pca = vectorizer.fit_transform(features_df_interactions.drop('game_win', axis = 1))
+    features_df_interactions_pca_df = pd.DataFrame(columns = [f'pca_{col}' for col in range(n_components)],
+                                                   data = features_df_interactions_pca, index = features_df.index)
+    df_concat = pd.concat([features_df_interactions_pca_df, features_df.drop('game_win', axis=1)], axis=1)
 
     inputs_df = pd.DataFrame.from_dict(inputs)
 
     inputs_df.index = features_df.index
 
-    inputs_df['win_prob'] = model.predict_proba(features_df_interactions_pca)[:,-1]
+    inputs_df['win_prob'] = model.predict_proba(df_concat)[:,-1]
     return inputs_df.sort_values('win_prob', ascending = False)
+
 
 def load_vectorizer():
     with open(f'{Values.model_locations}/agent_vectorizer.pickle', 'rb') as f:
@@ -301,9 +309,10 @@ def create_interactions(df: pd.DataFrame) -> pd.DataFrame:
         for j in columns_list:
             if  i == 'game_win' or j == 'game_win':
                 continue
-            if columns_list.index(i) >=columns_list.index(j):
+            if columns_list.index(i) >= columns_list.index(j):
                 continue
             df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
+    df_interaction.index = df.index
     return df_interaction
 
 
@@ -312,9 +321,8 @@ def train_model():
     all_records, all_agent_records = get_all_processed_data()
     all_agent_records_df = pd.DataFrame.from_dict(all_agent_records)
 
-
-    model = RandomForestClassifier(n_estimators=35, max_features = 0.18, max_depth=6)
-    pca = PCA(n_components=73)
+    model = RandomForestClassifier(n_estimators=n_estimators, max_features = max_features, max_depth=max_depth)
+    pca = PCA(n_components=n_components)
 
     interaction_df = create_interactions(all_agent_records_df)
 
@@ -322,8 +330,11 @@ def train_model():
     all_y = interaction_df['game_win']
 
     all_x_pca = pca.fit_transform(all_x)
+    all_x_pca_df = pd.DataFrame(columns = [f'pca_{col}' for col in range(n_components)],
+                                data = all_x_pca, index = all_agent_records_df.index)
+    df_concat = pd.concat([all_x_pca_df, all_agent_records_df.drop('game_win', axis=1)], axis=1)
 
-    model.fit(all_x_pca, all_y)
+    model.fit(df_concat, all_y)
     save_model(model)
     save_vectorizer(pca)
 
@@ -339,7 +350,7 @@ def predict(map_pick: str, current_agent_list: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    train_model()
+    # train_model()
 
     pp = pprint.PrettyPrinter(indent=4)
 
