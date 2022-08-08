@@ -82,5 +82,5 @@ if __name__ == '__main__':
         logger.info(f'User: {user_id}, match_count: {len(match_ids)}' )
 
         for i in match_ids:
-            time.sleep(20)
+            time.sleep(10)
             scrape_match(i)
