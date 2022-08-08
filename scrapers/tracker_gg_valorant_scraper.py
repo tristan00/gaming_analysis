@@ -11,7 +11,9 @@ import glob
 import os
 import random
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+                    datefmt='%Y-%m-%d:%H:%M:%S',
+                    level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -20,7 +22,7 @@ def get_driver():
     return driver
 
 
-def scrape_match(match_id):
+def scrape_match(match_id: str):
     if match_id in get_all_match_ids():
         logger.info(f'Skipping id: {match_id}, already scraped')
 
@@ -36,7 +38,7 @@ def scrape_match(match_id):
     driver.close()
 
 
-def get_match_ids_from_userpage(user_id):
+def get_match_ids_from_userpage(user_id: str):
     logger.info(f'Getting matches for user_id: {user_id}')
     driver = get_driver()
     driver.get(f'https://tracker.gg/valorant/profile/riot/{user_id.replace("#", "%23")}/overview')
@@ -48,7 +50,7 @@ def get_match_ids_from_userpage(user_id):
     return [i['href'].split('/')[-1].split('?')[0] for i in match_links]
 
 
-def get_user_ids_from_match_data(match_id):
+def get_user_ids_from_match_data(match_id: str):
     try:
         with open(f'{Values.valorant_data_loc}/{match_id}.json', 'r') as f:
             json_data = json.load(f)
@@ -72,8 +74,10 @@ def get_user_ids_from_match_data(match_id):
         return list()
 
 
-def get_all_match_ids():
+def get_all_match_ids(max_num: int or None = 100):
     files = glob.glob(f'{Values.valorant_data_loc}/*.json')
+    if max_num and len(files) > max_num:
+        files = random.sample(files, max_num)
     return [os.path.basename(i).split('.')[0] for i in files]
 
 
@@ -82,7 +86,7 @@ def main():
 
     for iteration in range(num_of_iterations):
         try:
-            match_ids = get_all_match_ids()
+            match_ids = get_all_match_ids(max_num = 100)
             user_ids = list()
             for i in match_ids:
                 user_ids.extend(get_user_ids_from_match_data(i))
