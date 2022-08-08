@@ -5,8 +5,12 @@ from sklearn.model_selection import train_test_split
 import pickle
 import pprint
 
+from typing import List
+from sklearn.decomposition import PCA
 from config import Values
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+
+from helpers.timeit import timing
 
 
 def get_winner(round_summary):
@@ -220,7 +224,10 @@ def create_agent_row(agent_list, map_pick, game_win):
     return row
 
 
-def predict_best_lineup(model, map_pick, current_agent_list):
+def predict_best_lineup(model, vectorizer, map_pick, current_agent_list):
+
+    agent_score = list()
+
     agent_tuples = list()
 
     for i1 in all_agents_list:
@@ -247,17 +254,29 @@ def predict_best_lineup(model, map_pick, current_agent_list):
     features = list()
 
     for i in matched_agent_tuples:
-        inputs.append(
-            {'agent1_name': i[0], 'agent2_name': i[1], 'agent3_name': i[2], 'agent4_name': i[3], 'agent5_name': i[4]})
+        inputs.append({'agent1_name': i[0], 'agent2_name': i[1], 'agent3_name': i[2], 'agent4_name': i[3], 'agent5_name': i[4]})
         features.append(create_agent_row(list(i), map_pick, None))
 
     features_df = pd.DataFrame.from_dict(features)
-    features_df = features_df.drop('game_win', axis=1)
+    features_df_interactions = create_interactions(features_df)
+    features_df_interactions_pca = vectorizer.fit_transform(features_df_interactions.drop('game_win', axis = 1))
+
     inputs_df = pd.DataFrame.from_dict(inputs)
 
     inputs_df.index = features_df.index
-    inputs_df['win_prob'] = model.predict_proba(features_df)[:, -1]
-    return inputs_df.sort_values('win_prob', ascending=False)
+
+    inputs_df['win_prob'] = model.predict_proba(features_df_interactions_pca)[:,-1]
+    return inputs_df.sort_values('win_prob', ascending = False)
+
+def load_vectorizer():
+    with open(f'{Values.model_locations}/agent_vectorizer.pickle', 'rb') as f:
+        model = pickle.load(f)
+    return model
+
+
+def save_vectorizer(model):
+    with open(f'{Values.model_locations}/agent_vectorizer.pickle', 'wb') as f:
+        pickle.dump(model, f)
 
 
 def load_model():
@@ -270,28 +289,63 @@ def save_model(model):
     with open(f'{Values.model_locations}/agent_picker.pickle', 'wb') as f:
         pickle.dump(model, f)
 
+def create_interactions(df: pd.DataFrame) -> pd.DataFrame:
+    df_interaction = pd.DataFrame()
 
+    df_interaction['game_win'] = df['game_win']
+
+    columns_list = sorted(df.columns.tolist())
+
+    for i in columns_list:
+        df_interaction[i] = df[i]
+        for j in columns_list:
+            if  i == 'game_win' or j == 'game_win':
+                continue
+            if columns_list.index(i) >=columns_list.index(j):
+                continue
+            df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
+    return df_interaction
+
+
+@timing
 def train_model():
     all_records, all_agent_records = get_all_processed_data()
     all_agent_records_df = pd.DataFrame.from_dict(all_agent_records)
 
-    model = RandomForestClassifier(n_estimators=100, max_features=.5)
 
-    all_x = all_agent_records_df.drop('game_win', axis=1)
-    all_y = all_agent_records_df['game_win']
+    model = RandomForestClassifier(n_estimators=35, max_features = 0.18, max_depth=6)
+    pca = PCA(n_components=73)
 
-    model.fit(all_x, all_y)
+    interaction_df = create_interactions(all_agent_records_df)
+
+    all_x = interaction_df.drop('game_win', axis=1)
+    all_y = interaction_df['game_win']
+
+    all_x_pca = pca.fit_transform(all_x)
+
+    model.fit(all_x_pca, all_y)
     save_model(model)
+    save_vectorizer(pca)
+
+
+@timing
+def predict(map_pick: str, current_agent_list: List[str]) -> None:
+    model = load_model()
+    vectorizer = load_vectorizer()
+    pp = pprint.PrettyPrinter(indent=4)
+    best_results = predict_best_lineup(model, vectorizer, map_pick, current_agent_list)
+
+    pp.pprint(best_results.head().to_dict(orient='records'))
 
 
 if __name__ == '__main__':
     train_model()
 
     pp = pprint.PrettyPrinter(indent=4)
-    model = load_model()
 
     map_pick = 'Pearl'
     current_agent_list = []
+    predict(map_pick, current_agent_list)
 
-    best_results = predict_best_lineup(model, map_pick, current_agent_list)
-    pp.pprint(best_results.head().to_dict(orient='records'))
+
+
