@@ -86,7 +86,7 @@ def main():
 
     for iteration in range(num_of_iterations):
         try:
-            match_ids = get_all_match_ids(max_num = 100)
+            match_ids = get_all_match_ids(max_num = 1000)
             user_ids = list()
             for i in match_ids:
                 user_ids.extend(get_user_ids_from_match_data(i))
@@ -102,6 +102,7 @@ def main():
                 for i in match_ids:
                     time.sleep(10)
                     scrape_match(i)
+
         except Exception as e:
             logger.exception(e)
 

@@ -12,10 +12,10 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from helpers.timeit import timing
 
-n_components = 93
-n_estimators = 48
-max_features = 0.42
-max_depth = 6
+n_components = 51
+n_estimators = 46
+max_features = 0.9
+max_depth = 3
 
 invalid_keys = [
     'currRank',
@@ -85,6 +85,34 @@ weapons = ['Vandal',
            'Ares',
            'Shorty',
            'Bucky']
+ranks = [
+    'Unranked',
+    'Iron 1',
+    'Iron 2',
+    'Iron 3',
+    'Bronze 1',
+    'Bronze 2',
+    'Bronze 3',
+    'Silver 1',
+    'Silver 2',
+    'Silver 3',
+    'Gold 1',
+    'Gold 2',
+    'Gold 3',
+    'Platinum 1',
+    'Platinum 2',
+    'Platinum 3',
+    'Diamond 1',
+    'Diamond 2',
+    'Diamond 3',
+    'Ascendant 1',
+    'Ascendant 2',
+    'Ascendant 3',
+    'Immortal 1',
+    'Immortal 2',
+    'Immortal 3',
+    'Radiant',
+]
 
 
 def get_winner(round_summary):
@@ -92,6 +120,7 @@ def get_winner(round_summary):
 
 
 def extract_team_rows(game_metadata, game_attributes, round_summary, player_summary):
+
     team_red_agents = list()
     team_blue_agents = list()
 
@@ -99,21 +128,21 @@ def extract_team_rows(game_metadata, game_attributes, round_summary, player_summ
 
     winning_team = get_winner(round_summary)
 
+    rank_list_team_red = []
+    rank_list_team_blue = []
+
     for i in player_summary:
         if i['metadata']['teamId'] == 'Red':
             team_red_agents.append(i['metadata']['agentName'])
+            rank_list_team_red.append(i['stats']['rank']['value'])
         if i['metadata']['teamId'] == 'Blue':
             team_blue_agents.append(i['metadata']['agentName'])
+            rank_list_team_blue.append(i['stats']['rank']['value'])
 
-    row1 = create_agent_row(team_red_agents, map_pick, int('Red' == winning_team))
-    row2 = create_agent_row(team_blue_agents, map_pick, int('Blue' == winning_team))
+    row1 = create_agent_row(team_red_agents, map_pick, int('Red' == winning_team), rank_list_team_red)
+    row2 = create_agent_row(team_blue_agents, map_pick, int('Blue' == winning_team), rank_list_team_blue)
 
     return [row1, row2]
-
-
-invalid_keys = [
-    'currRank',
-]
 
 
 def extract_player_rows(game_metadata, round_summary, player_summary, player_rounds_kills):
@@ -178,6 +207,10 @@ def get_all_processed_data():
         if 'data' not in json_data:
             print(f'error {file}')
             continue
+
+        if json_data['data']['metadata']['modeName'] != 'Competitive':
+            continue
+
         game_metadata = json_data['data']['metadata']
         game_attributes = json_data['data']['attributes']
 
@@ -193,7 +226,7 @@ def get_all_processed_data():
     return all_records, agent_records
 
 
-def create_agent_row(agent_list, map_pick, game_win):
+def create_agent_row(agent_list: List[str], map_pick: str, game_win: int, rank_list: List[str]):
     for i in agent_list:
         if i not in all_agents_list:
             raise Exception(f'Invalid agent: {i}')
@@ -222,16 +255,16 @@ def create_agent_row(agent_list, map_pick, game_win):
     for i in all_maps_list:
         row['map_' + i] = int(i == map_pick)
 
+    rank_avg = sum([ranks.index(i) for i in rank_list]) / max(len(rank_list), 1)
+    row['rank_avg'] = rank_avg
+
     row.update(roles_dict)
 
     row['game_win'] = game_win
     return row
 
 
-def predict_best_lineup(model, vectorizer, map_pick, current_agent_list):
-
-    agent_score = list()
-
+def predict_best_lineup(model, map_pick: str, current_agent_list: List[str], rank_list: List[str]):
     agent_tuples = list()
 
     for i1 in all_agents_list:
@@ -258,22 +291,19 @@ def predict_best_lineup(model, vectorizer, map_pick, current_agent_list):
     features = list()
 
     for i in matched_agent_tuples:
-        inputs.append({'agent1_name': i[0], 'agent2_name': i[1], 'agent3_name': i[2], 'agent4_name': i[3], 'agent5_name': i[4]})
-        features.append(create_agent_row(list(i), map_pick, None))
+        inputs.append(
+            {'agent1_name': i[0], 'agent2_name': i[1], 'agent3_name': i[2], 'agent4_name': i[3], 'agent5_name': i[4]})
+        features.append(create_agent_row(list(i), map_pick, None, rank_list))
 
     features_df = pd.DataFrame.from_dict(features)
     features_df_interactions = create_interactions(features_df)
-    features_df_interactions_pca = vectorizer.transform(features_df_interactions.drop('game_win', axis = 1))
-    features_df_interactions_pca_df = pd.DataFrame(columns = [f'pca_{col}' for col in range(n_components)],
-                                                   data = features_df_interactions_pca, index = features_df.index)
-    df_concat = pd.concat([features_df_interactions_pca_df, features_df.drop('game_win', axis=1)], axis=1)
 
     inputs_df = pd.DataFrame.from_dict(inputs)
 
     inputs_df.index = features_df.index
 
-    inputs_df['win_prob'] = model.predict_proba(df_concat)[:,-1]
-    return inputs_df.sort_values('win_prob', ascending = False)
+    inputs_df['win_prob'] = model.predict_proba(features_df_interactions.drop('game_win', axis=1))[:, -1]
+    return inputs_df.sort_values('win_prob', ascending=False)
 
 
 def load_vectorizer():
@@ -297,8 +327,9 @@ def save_model(model):
     with open(f'{Values.model_locations}/agent_picker.pickle', 'wb') as f:
         pickle.dump(model, f)
 
+
 def create_interactions(df: pd.DataFrame) -> pd.DataFrame:
-    df_interaction = pd.DataFrame()
+    df_interaction = pd.DataFrame(index = df.index)
 
     df_interaction['game_win'] = df['game_win']
 
@@ -307,12 +338,19 @@ def create_interactions(df: pd.DataFrame) -> pd.DataFrame:
     for i in columns_list:
         df_interaction[i] = df[i]
         for j in columns_list:
-            if  i == 'game_win' or j == 'game_win':
+            if i == 'game_win' or j == 'game_win':
                 continue
-            if columns_list.index(i) >= columns_list.index(j):
+            if columns_list.index(i) >=columns_list.index(j):
                 continue
-            df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
-    df_interaction.index = df.index
+
+            if 'rank' in i:
+                df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
+            elif 'role' in i:
+                df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
+                df_interaction[f'{i}_max_{j}'] = df[[i, j]].max(axis = 1)
+            else:
+                df_interaction[f'{i}_max_{j}'] = df[[i, j]].max(axis = 1)
+
     return df_interaction
 
 
@@ -321,30 +359,23 @@ def train_model():
     all_records, all_agent_records = get_all_processed_data()
     all_agent_records_df = pd.DataFrame.from_dict(all_agent_records)
 
-    model = RandomForestClassifier(n_estimators=n_estimators, max_features = max_features, max_depth=max_depth)
-    pca = PCA(n_components=n_components)
-
+    model = RandomForestClassifier(n_estimators=n_estimators, max_features=max_features, max_depth=max_depth)
     interaction_df = create_interactions(all_agent_records_df)
-
     all_x = interaction_df.drop('game_win', axis=1)
     all_y = interaction_df['game_win']
 
-    all_x_pca = pca.fit_transform(all_x)
-    all_x_pca_df = pd.DataFrame(columns = [f'pca_{col}' for col in range(n_components)],
-                                data = all_x_pca, index = all_agent_records_df.index)
-    df_concat = pd.concat([all_x_pca_df, all_agent_records_df.drop('game_win', axis=1)], axis=1)
-
-    model.fit(df_concat, all_y)
+    model.fit(all_x, all_y)
     save_model(model)
-    save_vectorizer(pca)
 
 
 @timing
-def predict(map_pick: str, current_agent_list: List[str]) -> None:
+def predict(map_pick: str, current_agent_list: List[str], rank_list: List[str]) -> None:
     model = load_model()
-    vectorizer = load_vectorizer()
     pp = pprint.PrettyPrinter(indent=4)
-    best_results = predict_best_lineup(model, vectorizer, map_pick, current_agent_list)
+    best_results = predict_best_lineup(model=model,
+                                       map_pick=map_pick,
+                                       current_agent_list=current_agent_list,
+                                       rank_list=rank_list)
 
     pp.pprint(best_results.head().to_dict(orient='records'))
 
@@ -355,13 +386,10 @@ if __name__ == '__main__':
     pp = pprint.PrettyPrinter(indent=4)
 
     map_pick = 'Haven'
-    current_agent_list = ['Chamber',
-                          'Jett',
-                          'Omen',
-                          'Reyna',
-                          # 'KAY/O'
-                          ]
-    predict(map_pick, current_agent_list)
+    current_agent_list = [
+    ]
+    rank_list = ['Bronze 2']
+    predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
 
-
-
+    rank_list = ['Radiant']
+    predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
