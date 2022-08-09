@@ -60,7 +60,10 @@ def get_user_ids_from_match_data(match_id: str):
         users = list()
 
         if 'data' not in json_data:
-            print(f"error {f'{Values.valorant_data_loc}/{match_id}.json'}")
+            logger.info(f"error {f'{Values.valorant_data_loc}/{match_id}.json'}")
+            return list()
+        elif 'data' not in json_data or json_data['data']['metadata']['modeName'] != 'Competitive':
+            logger.info(f"error, not competitive game,  {f'{Values.valorant_data_loc}/{match_id}.json'}")
             return list()
         else:
 

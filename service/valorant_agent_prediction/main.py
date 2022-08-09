@@ -12,10 +12,13 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from helpers.timeit import timing
 
-n_components = 51
-n_estimators = 46
-max_features = 0.9
-max_depth = 3
+# n_estimators = 31
+# max_features = 0.48
+# max_depth = 7
+
+n_estimators = 43
+max_features = .13
+max_depth =  4
 
 invalid_keys = [
     'currRank',
