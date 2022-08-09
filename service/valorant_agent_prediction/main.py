@@ -12,10 +12,10 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from helpers.timeit import timing
 
-n_components = 39
-n_estimators = 92
-max_features = 0.95
-max_depth = 10
+n_components = 93
+n_estimators = 48
+max_features = 0.42
+max_depth = 6
 
 invalid_keys = [
     'currRank',
@@ -263,7 +263,7 @@ def predict_best_lineup(model, vectorizer, map_pick, current_agent_list):
 
     features_df = pd.DataFrame.from_dict(features)
     features_df_interactions = create_interactions(features_df)
-    features_df_interactions_pca = vectorizer.fit_transform(features_df_interactions.drop('game_win', axis = 1))
+    features_df_interactions_pca = vectorizer.transform(features_df_interactions.drop('game_win', axis = 1))
     features_df_interactions_pca_df = pd.DataFrame(columns = [f'pca_{col}' for col in range(n_components)],
                                                    data = features_df_interactions_pca, index = features_df.index)
     df_concat = pd.concat([features_df_interactions_pca_df, features_df.drop('game_win', axis=1)], axis=1)
@@ -350,12 +350,17 @@ def predict(map_pick: str, current_agent_list: List[str]) -> None:
 
 
 if __name__ == '__main__':
-    # train_model()
+    train_model()
 
     pp = pprint.PrettyPrinter(indent=4)
 
-    map_pick = 'Pearl'
-    current_agent_list = []
+    map_pick = 'Haven'
+    current_agent_list = ['Chamber',
+                          'Jett',
+                          'Omen',
+                          'Reyna',
+                          # 'KAY/O'
+                          ]
     predict(map_pick, current_agent_list)
 
 
