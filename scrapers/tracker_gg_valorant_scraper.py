@@ -59,10 +59,10 @@ def get_user_ids_from_match_data(match_id: str):
 
         users = list()
 
-        if 'data' not in json_data:
+        if 'data' not in json_data_loaded:
             logger.info(f"error {f'{Values.valorant_data_loc}/{match_id}.json'}")
             return list()
-        elif 'data' not in json_data or json_data['data']['metadata']['modeName'] != 'Competitive':
+        elif 'data' not in json_data_loaded or json_data_loaded['data']['metadata']['modeName'] != 'Competitive':
             logger.info(f"error, not competitive game,  {f'{Values.valorant_data_loc}/{match_id}.json'}")
             return list()
         else:
@@ -72,7 +72,8 @@ def get_user_ids_from_match_data(match_id: str):
                     users.append(i['attributes']['platformUserIdentifier'])
 
             return list(set(users))
-    except:
+    except Exception as e:
+        logger.exception(e)
         logging.warning(f'error reading match id: {match_id}')
         return list()
 
