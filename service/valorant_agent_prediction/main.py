@@ -341,18 +341,18 @@ def create_interactions(df: pd.DataFrame) -> pd.DataFrame:
     for i in columns_list:
         df_interaction[i] = df[i]
         for j in columns_list:
-            if i == 'game_win' or j == 'game_win':
+            if  i == 'game_win' or j == 'game_win':
                 continue
             if columns_list.index(i) >=columns_list.index(j):
                 continue
 
-            if 'rank' in i:
+            if 'rank' in i or 'rank' in j:
                 df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
             elif 'role' in i:
                 df_interaction[f'{i}_mul_{j}'] = df[i]*df[j]
-                df_interaction[f'{i}_max_{j}'] = df[[i, j]].max(axis = 1)
+                df_interaction[f'{i}_max_{j}'] = df[[i,j]].max(axis = 1)
             else:
-                df_interaction[f'{i}_max_{j}'] = df[[i, j]].max(axis = 1)
+                df_interaction[f'{i}_max_{j}'] = df[i]*df[j]
 
     return df_interaction
 

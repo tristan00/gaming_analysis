@@ -17,6 +17,7 @@ logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def get_driver():
     driver = webdriver.Chrome(Values.chromedriver_location)
     return driver
@@ -90,11 +91,15 @@ def main():
 
     for iteration in range(num_of_iterations):
         try:
-            match_ids = get_all_match_ids(max_num = 1000)
+            match_ids = get_all_match_ids(max_num = 100)
+
             user_ids = list()
+
             for i in match_ids:
                 user_ids.extend(get_user_ids_from_match_data(i))
+
             user_ids = list(set(user_ids))
+
             random.shuffle(user_ids)
 
             for user_id in user_ids:
