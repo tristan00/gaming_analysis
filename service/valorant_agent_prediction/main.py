@@ -1,6 +1,7 @@
 import json
 import glob
 import pandas as pd
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import pickle
 import pprint
@@ -9,16 +10,21 @@ from typing import List
 from sklearn.decomposition import PCA
 from config import Values
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-
+from sklearn.linear_model import LogisticRegression
+import random
+from scipy import stats
+from sklearn.model_selection import KFold
 from helpers.timeit import timing
+import numpy as np
 
-# n_estimators = 31
-# max_features = 0.48
-# max_depth = 7
 
-n_estimators = 43
-max_features = .13
-max_depth =  4
+n_estimators = 69
+max_features = 0.24
+max_depth = 8
+model_choice = 'rf'
+solver = 'saga'
+penalty = 'l2'
+k=5
 
 invalid_keys = [
     'currRank',
@@ -305,7 +311,10 @@ def predict_best_lineup(model, map_pick: str, current_agent_list: List[str], ran
 
     inputs_df.index = features_df.index
 
-    inputs_df['win_prob'] = model.predict_proba(features_df_interactions.drop('game_win', axis=1))[:, -1]
+    for i in range(k):
+        inputs_df[f'win_prob_{i}'] = model[i].predict_proba(features_df_interactions.drop('game_win', axis=1))[:, -1]
+    inputs_df[f'win_prob'] = inputs_df[[f'win_prob_{i}' for i in range(k)]].mean(axis = 1)
+
     return inputs_df.sort_values('win_prob', ascending=False)
 
 
@@ -323,6 +332,16 @@ def save_vectorizer(model):
 def load_model():
     with open(f'{Values.model_locations}/agent_picker.pickle', 'rb') as f:
         model = pickle.load(f)
+    return model
+
+def get_model_to_train(model_choice, n_estimators, max_features, max_depth, solver, penalty, max_iter):
+    if model_choice == 'rf':
+        model = RandomForestClassifier(n_estimators=n_estimators, max_features = max_features, max_depth=max_depth)
+    else:
+        if penalty == 'elasticnet':
+            model = LogisticRegression(solver=solver, penalty=penalty, l1_ratio=.5, max_iter=1000)
+        else:
+            model = LogisticRegression(solver=solver, penalty=penalty, max_iter=1000)
     return model
 
 
@@ -362,13 +381,36 @@ def train_model():
     all_records, all_agent_records = get_all_processed_data()
     all_agent_records_df = pd.DataFrame.from_dict(all_agent_records)
 
-    model = RandomForestClassifier(n_estimators=n_estimators, max_features=max_features, max_depth=max_depth)
-    interaction_df = create_interactions(all_agent_records_df)
-    all_x = interaction_df.drop('game_win', axis=1)
-    all_y = interaction_df['game_win']
+    train_df, val_df = train_test_split(all_agent_records_df, random_state = 1)
 
-    model.fit(all_x, all_y)
-    save_model(model)
+
+    models = list()
+    preds_list = list()
+    kf = KFold(n_splits=k, random_state=1, shuffle = True)
+
+    for train_fold_np , val_fold_np in kf.split(train_df):
+
+        train_fold_df = all_agent_records_df.iloc[train_fold_np,:]
+        # val_fold_df = all_agent_records_df.iloc[val_fold_np,:]
+
+        model = get_model_to_train(model_choice, n_estimators, max_features, max_depth, solver, penalty, 1000)
+        model.fit(train_fold_df.drop('game_win', axis = 1), train_fold_df['game_win'])
+        models.append(model)
+        preds = model.predict_proba(val_df.drop('game_win', axis = 1))[:,-1]
+        preds_list.append(preds)
+
+    result_mode = list()
+    for idx in range(val_df.shape[0]):
+        tmp_result = 0
+        for pred_idx in preds_list:
+            tmp_result += pred_idx[idx]
+        result_mode.append(tmp_result/k)
+
+
+    result_mode_np = np.rint(np.array(result_mode))
+    accuracy_score(result_mode_np, val_df['game_win'])
+    save_model(models)
+
 
 
 @timing

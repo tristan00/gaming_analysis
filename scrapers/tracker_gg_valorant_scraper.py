@@ -87,11 +87,11 @@ def get_all_match_ids(max_num: int or None = 100):
 
 
 def main():
-    num_of_iterations=5
+    num_of_iterations=100
 
     for iteration in range(num_of_iterations):
         try:
-            match_ids = get_all_match_ids(max_num = 100)
+            match_ids = get_all_match_ids(max_num = 10)
 
             user_ids = list()
 
@@ -101,6 +101,7 @@ def main():
             user_ids = list(set(user_ids))
 
             random.shuffle(user_ids)
+            logging.info(f'Running {len(user_ids)} user ids')
 
             for user_id in user_ids:
                 time.sleep(10)
