@@ -11,7 +11,7 @@ import glob
 import os
 import random
 
-logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+logging.basicConfig(format=Values.logging_format,
                     datefmt='%Y-%m-%d:%H:%M:%S',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ def main():
             user_ids = list(set(user_ids))
 
             random.shuffle(user_ids)
+            user_ids.insert(0, 'Mathematics#6622')
             logging.info(f'Running {len(user_ids)} user ids')
 
             for user_id in user_ids:

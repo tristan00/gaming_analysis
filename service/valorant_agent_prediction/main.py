@@ -16,10 +16,17 @@ from scipy import stats
 from sklearn.model_selection import KFold
 from helpers.timeit import timing
 import numpy as np
+import logging
+
+logging.basicConfig(format=Values.logging_format,
+                    datefmt='%Y-%m-%d:%H:%M:%S',
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-n_estimators = 69
-max_features = 0.24
+n_estimators = 78
+max_features = 0.5
 max_depth = 8
 model_choice = 'rf'
 solver = 'saga'
@@ -214,7 +221,7 @@ def get_all_processed_data():
             json_data = json.load(f)
         json_data = json.loads(json_data)
         if 'data' not in json_data:
-            print(f'error {file}')
+            logger.warning(f'error {file}')
             continue
 
         if json_data['data']['metadata']['modeName'] != 'Competitive':
@@ -235,7 +242,10 @@ def get_all_processed_data():
     return all_records, agent_records
 
 
-def create_agent_row(agent_list: List[str], map_pick: str, game_win: int, rank_list: List[str]):
+def create_agent_row(agent_list, map_pick, game_win, rank_list):
+
+    sorted_agent_list = sorted(agent_list)
+
     for i in agent_list:
         if i not in all_agents_list:
             raise Exception(f'Invalid agent: {i}')
@@ -245,6 +255,12 @@ def create_agent_row(agent_list: List[str], map_pick: str, game_win: int, rank_l
 
     row = dict()
 
+    agent_dict_encoded = {f'agent_num_{i}': 0 for i in range(5)}
+    for n, i in enumerate(sorted_agent_list):
+        agent_dict_encoded[f'agent_num_{n}'] = all_agents_list.index(i)
+
+    row.update(agent_dict_encoded)
+
     roles_dict = {f'role_{i}': 0 for i in roles_list}
 
     for i in all_agents_list:
@@ -253,19 +269,20 @@ def create_agent_row(agent_list: List[str], map_pick: str, game_win: int, rank_l
     for i in agent_list:
         roles_dict[f'role_{agent_roles[i]}'] += 1
 
-    roles_dict_keys = list(roles_dict.keys())
-
-    for i in roles_dict_keys:
-        for j in roles_dict_keys:
-            if roles_list.index(i.split('_')[-1]) >= roles_list.index(j.split('_')[-1]):
-                continue
-            roles_dict[f'{i}*{j}'] = roles_dict[i] * roles_dict[j]
-
+    row['map_pick'] = all_maps_list.index(map_pick)
     for i in all_maps_list:
         row['map_' + i] = int(i == map_pick)
 
-    rank_avg = sum([ranks.index(i) for i in rank_list]) / max(len(rank_list), 1)
+    rank_avg = sum([ranks.index(i) for i in rank_list])/max(len(rank_list), 1)
     row['rank_avg'] = rank_avg
+
+
+    for i in ranks:
+        if i in rank_list:
+            row[f'rank_{i}'.replace(' ', '_')] = 1
+        else:
+            row[f'rank_{i}'.replace(' ', '_')] = 0
+
 
     row.update(roles_dict)
 
@@ -305,17 +322,19 @@ def predict_best_lineup(model, map_pick: str, current_agent_list: List[str], ran
         features.append(create_agent_row(list(i), map_pick, None, rank_list))
 
     features_df = pd.DataFrame.from_dict(features)
-    features_df_interactions = create_interactions(features_df)
+    # features_df_interactions = create_interactions(features_df)
 
     inputs_df = pd.DataFrame.from_dict(inputs)
 
     inputs_df.index = features_df.index
 
     for i in range(k):
-        inputs_df[f'win_prob_{i}'] = model[i].predict_proba(features_df_interactions.drop('game_win', axis=1))[:, -1]
+        # preds =model[i].predict_proba(features_df.drop('game_win', axis=1))[:, -1]
+        # print(preds.shape, inputs_df.shape)
+        inputs_df[f'win_prob_{i}'] = model[i].predict_proba(features_df.drop('game_win', axis=1))[:, -1]
     inputs_df[f'win_prob'] = inputs_df[[f'win_prob_{i}' for i in range(k)]].mean(axis = 1)
 
-    return inputs_df.sort_values('win_prob', ascending=False)
+    return inputs_df.sort_values('win_prob', ascending=False).drop([f'win_prob_{i}' for i in range(k)], axis = 1)
 
 
 def load_vectorizer():
@@ -381,7 +400,7 @@ def train_model():
     all_records, all_agent_records = get_all_processed_data()
     all_agent_records_df = pd.DataFrame.from_dict(all_agent_records)
 
-    train_df, val_df = train_test_split(all_agent_records_df, random_state = 1)
+    train_df, val_df = train_test_split(all_agent_records_df, random_state = 1, test_size=.1)
 
 
     models = list()
@@ -408,7 +427,8 @@ def train_model():
 
 
     result_mode_np = np.rint(np.array(result_mode))
-    accuracy_score(result_mode_np, val_df['game_win'])
+    acc = accuracy_score(result_mode_np, val_df['game_win'])
+    logger.info(f'Accuracy: {acc}')
     save_model(models)
 
 
@@ -426,15 +446,21 @@ def predict(map_pick: str, current_agent_list: List[str], rank_list: List[str]) 
 
 
 if __name__ == '__main__':
-    train_model()
+    # train_model()
 
     pp = pprint.PrettyPrinter(indent=4)
 
-    map_pick = 'Haven'
+    map_pick = 'Ascent'
     current_agent_list = [
+        'Neon',
+        'Raze',
     ]
+
+    # rank_list = ['Unranked']
+    # predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
+
     rank_list = ['Bronze 2']
     predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
 
-    rank_list = ['Radiant']
-    predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
+    # rank_list = ['Radiant']
+    # predict(map_pick=map_pick, current_agent_list=current_agent_list, rank_list=rank_list)
