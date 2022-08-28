@@ -56,8 +56,20 @@ def get_match_ids_from_userpage(user_id: str, invalid_ranks: List[str]):
 
     logger.info(f'Getting matches for user_id: {user_id}')
     driver = get_driver()
-    driver.get(f'https://tracker.gg/valorant/profile/riot/{user_id.replace("#", "%23")}/overview')
-    time.sleep(10)
+    driver.get(f'https://tracker.gg/valorant/profile/riot/{user_id.replace("#", "%23")}/matches?playlist=competitive')
+    time.sleep(4)
+
+    while True:
+
+        for i in range(100):
+            driver.find_element(By.CSS_SELECTOR,'html').send_keys(Keys.DOWN)
+        time.sleep(5)
+        try:
+            driver.find_elements(By.XPATH, "//button[contains(text(), 'Load More Matches')]")[-1].click()
+        except IndexError:
+            continue
+        time.sleep(5)
+
     soup = BeautifulSoup(driver.page_source)
 
     for i in invalid_ranks:
@@ -75,7 +87,7 @@ def get_match_ids_from_userpage(user_id: str, invalid_ranks: List[str]):
         if 'Competitive' in str(match):
             links = match.find_all('a', href=True)
             match_links.extend([i for i in links if 'valorant/match' in i['href']])
-    return [i['href'].split('/')[-1].split('?')[0] for i in match_links]
+    return list(set([i['href'].split('/')[-1].split('?')[0] for i in match_links]))
 
 
 def get_user_ids_from_match_data(match_id: str):
@@ -129,7 +141,10 @@ def main():
             user_ids = list(set(user_ids))
 
             random.shuffle(user_ids)
-            # user_ids.insert(0, 'Mathematics#6622')
+
+            if len(user_ids) == 0:
+                user_ids.insert(0, 'Mathematics#6622')
+            user_ids = ['Mathematics#6622']
             logging.info(f'Running {len(user_ids)} user ids')
 
             for user_id in user_ids:
