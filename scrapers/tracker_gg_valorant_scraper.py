@@ -1,3 +1,5 @@
+from typing import List
+
 import requests
 from bs4 import BeautifulSoup
 import selenium
@@ -10,6 +12,14 @@ import logging
 import glob
 import os
 import random
+from selenium.webdriver.chrome.options import Options
+import time
+import sys
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+import os
+
+
 
 logging.basicConfig(format=Values.logging_format,
                     datefmt='%Y-%m-%d:%H:%M:%S',
@@ -19,6 +29,9 @@ logger.setLevel(logging.INFO)
 
 
 def get_driver():
+    # chrome_options = webdriver.ChromeOptions()
+    # chrome_options.add_argument('--headless')
+    # driver = webdriver.Chrome(Values.chromedriver_location, options=chrome_options)
     driver = webdriver.Chrome(Values.chromedriver_location)
     return driver
 
@@ -39,15 +52,29 @@ def scrape_match(match_id: str):
     driver.close()
 
 
-def get_match_ids_from_userpage(user_id: str):
+def get_match_ids_from_userpage(user_id: str, invalid_ranks: List[str]):
+
     logger.info(f'Getting matches for user_id: {user_id}')
     driver = get_driver()
     driver.get(f'https://tracker.gg/valorant/profile/riot/{user_id.replace("#", "%23")}/overview')
     time.sleep(10)
     soup = BeautifulSoup(driver.page_source)
+
+    for i in invalid_ranks:
+        if i in driver.page_source:
+            logger.info(f'Skipping user {user_id}, invalid rank: {i}')
+            driver.close()
+            return list()
+
+
     driver.close()
-    links = soup.find_all('a', href=True)
-    match_links = [i for i in links if 'valorant/match' in i['href']]
+    matches = soup.find_all('div', {'class': 'match__row'})
+
+    match_links = list()
+    for match in matches:
+        if 'Competitive' in str(match):
+            links = match.find_all('a', href=True)
+            match_links.extend([i for i in links if 'valorant/match' in i['href']])
     return [i['href'].split('/')[-1].split('?')[0] for i in match_links]
 
 
@@ -87,11 +114,12 @@ def get_all_match_ids(max_num: int or None = 100):
 
 
 def main():
-    num_of_iterations=100
+    num_of_iterations=1000
+    invalid_ranks = ['Immortal', 'Radiant']
 
     for iteration in range(num_of_iterations):
         try:
-            match_ids = get_all_match_ids(max_num = 10)
+            match_ids = get_all_match_ids(max_num = 1)
 
             user_ids = list()
 
@@ -101,12 +129,12 @@ def main():
             user_ids = list(set(user_ids))
 
             random.shuffle(user_ids)
-            user_ids.insert(0, 'Mathematics#6622')
+            # user_ids.insert(0, 'Mathematics#6622')
             logging.info(f'Running {len(user_ids)} user ids')
 
             for user_id in user_ids:
                 time.sleep(10)
-                match_ids = get_match_ids_from_userpage(user_id)
+                match_ids = get_match_ids_from_userpage(user_id, invalid_ranks)
 
                 logger.info(f'User: {user_id}, match_count: {len(match_ids)}' )
 
